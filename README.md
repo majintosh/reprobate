@@ -30,4 +30,34 @@ So, I compiled two files. a.out was compiled without any flags, and b.out with j
 
 For curiosity's sake, I compiled the same file twice with the same flags, just to see if I'd get the same compiled binary. I did, so that's nice, but I used `nvim` to add just a single character to one of them. `sdiff` then showed the two files as being different. What's strange is that when I `nvim` again to delete that char, `sdiff` *still* says they're different. Curious, curious... (I looked into this later, and found it probably has to do with silent changes brought about by editing with a text editor, like endings and stuff)
 
-I have come to an epiphany. I've been getting lost in this whole mapping thing. So, for now, I'll set up a basic `target_addr` function that'll return a hardcoded value. I'll instead focus on the actual clobbering logic and setting up our probe.
+I have come to an epiphany. I've been getting lost in this whole mapping thing. So, for now, I'll set up a basic `target_addr` function that'll return a hardcoded value. I'll instead focus on the actual clobbering logic and setting up our probe. Placeholder functions sure are great, aren't they?
+
+Now we need to figure out how to actually write into our probed process's address space... What sort of syscall do I need to use here? We can just look this up... OR, we can `strace` ebpf and snoop on it!
+
+Only thing I can see here is a `bpf` syscall, which is great, I'm happy for bpf, it got its own syscall, but not quite what I'm looking for. I should just `strace` strace.
+
+`ptrace` is what we were looking for.
+
+Why am I doing all this snooping around when we could've just used the symbol table...
+
+Apparently, we need to run PTRACE_ATTACH before doing anything. Why though?! Why must we first attach...? Hmmm... This sucks, I must admit; everything here's veiled in mystery. We need to stage a heist, my friends...
+
+Here's the plan: we find *where* our tracee process's page table is, yoink it, then use it for our own, *nefarious* purposes. Muahahaha...
+
+Why can't I ptrace... I need CAP_SYS_PTRACE, whatever that means...
+
+No, nevermind, the issue was that the process was currently being traced by gdb. We're good now
+
+Ok, we need to go to the lab for this part, get a pen and paper ready. Firstly, we need to figure out what to overwrite our instruction with. We want to `jmp` to `_fini`'s `ret` instruction. Why? Weell, I don't know. I don't know what `_fini` is, but I suspect it's `_start`'s counterpart. Plus, looking at the assembly, that's where `main` jumps, so, that seems like where the instruction stream eventually ends up anyway.
+
+Looking at the intel developer's manual, we can see that there are 5 billion different `jmp` instructions. I got confused a bit, but ended up figuring out the opcode we want is FF. That's the `jmp` that performs an absolute jump rather than a relative one. Now, we *can* use a relative jump instead, but calculating the offset between our current address and the target one seems like a pain, so we'll just use FF.
+
+Now, we need to point FF to a place where the address we want to jump to exists. This can either be another memory address, or a register. I don't understand why we can't just provide the address we wanna jump to directly instead of using a pointer. Maybe a better way to go about all this is to overwrite the value of the RIP register? I guess that's what the jmp instruction does... Anyway,
+
+Anyway what? This is all terrible. I applaud people who have to work with assembly instructions manually, because this is agonizing. Let's just use an offset.
+
+EB 09, that's it, that's what we've been looking for this whole time. Forget FF and far `jmp`s.
+
+`jmp`s took me a bit to get. Rather than just calculating the offset between the current address and the target one, you also need to consider the length of the jmp instruction itself. For instance, you subtract 5 from your final offset if the `jmp` is 5 bytes.
+
+Working with memory addresses in c is tougher than I thought... You're forced to use a long if you want to assign a value larger than 32 bits. I thought this was supposed to be a systems-first language...
