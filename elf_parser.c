@@ -45,6 +45,6 @@ long get_func_addr(const char* elf_path, const char* func_name)
 
 int main(int argc, char* argv[])
 {
-	get_func_addr(argv[1], argv[2]);
+	printf("%lx\n", get_func_addr(argv[1], argv[2]));
 	return 0;
 }
