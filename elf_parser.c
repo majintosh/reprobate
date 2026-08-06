@@ -25,21 +25,17 @@ long get_func_addr(char* elf_path, char* func_name)
 	close(fd);
 	if (base == MAP_FAILED)
 		return -1;
+
 	Elf64_Ehdr *ehdr = (Elf64_Ehdr*) base;
 
-	Elf64_Shdr *sym_hdr = NULL;
-	Elf64_Shdr *str_hdr = NULL;
+	Elf64_Shdr *sym_hdr = (Elf64_Shdr*) (base + (ehdr->e_shoff));
 
-	Elf64_Shdr* ptr = (Elf64_Shdr*) (base + (ehdr->e_shoff));
-	for (int i = 0; (sym_hdr == NULL || str_hdr == NULL) && i<ehdr->e_shnum; i++, ptr++) {
-		if (ptr->sh_type == SHT_SYMTAB)
-			sym_hdr = ptr;
-		else if (ptr->sh_type == SHT_STRTAB)
-			str_hdr = ptr;
-	}
+	for (int i = 0; sym_hdr->sh_type != SHT_SYMTAB && i<ehdr->e_shnum; i++, sym_hdr = (Elf64_Shdr*) (base + (ehdr->e_shoff) + i*(ehdr->e_shentsize)));
 
-	Elf64_Sym *symtab = (Elf64_Sym*) (base + sym_hdr->sh_offset); // should be named sym_entry or something
-	for (int i = 0; i<(sym_hdr->sh_size / sym_hdr->sh_entsize); i++, symtab++) {
+	Elf64_Shdr *str_hdr = (Elf64_Shdr*) (base + ehdr->e_shoff + sym_hdr->sh_link*(ehdr->e_shentsize));
+
+	for (int i = 0; i<(sym_hdr->sh_size / sym_hdr->sh_entsize); i++) {
+		Elf64_Sym *symtab = (Elf64_Sym*) (base + sym_hdr->sh_offset + i*(sym_hdr->sh_entsize));
 		if (str_comp(func_name, (base + str_hdr->sh_offset + symtab->st_name)))
 			return symtab->st_value;
 	}

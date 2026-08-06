@@ -84,3 +84,5 @@ But that's all unnecessary, because we have pointers! Declaring a pointer doesn'
 But `mmap` requires a size_t arg, and I don't know how to get that... I wonder if I can just pass a macro, or NULL to grab the whole file... Do ELF headers have a max size? I wonder.
 
 We can just use `stat`! Very convenient.
+
+`sh_link` is a thing, a very useful thing that directs us to the correct string table, because there exist multiple string tables, which was the cause of some errors I had to endure. You've also gotta look out for index values and mixing them up with offsets, very troublesome things.
