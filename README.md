@@ -61,3 +61,26 @@ EB 09, that's it, that's what we've been looking for this whole time. Forget FF 
 `jmp`s took me a bit to get. Rather than just calculating the offset between the current address and the target one, you also need to consider the length of the jmp instruction itself. For instance, you subtract 5 from your final offset if the `jmp` is 5 bytes.
 
 Working with memory addresses in c is tougher than I thought... You're forced to use a long if you want to assign a value larger than 32 bits. I thought this was supposed to be a systems-first language...
+
+Anyhoo, we've got the `jmp` stuff down, now we need to figure out a way to actually graft machine code into another process's user space. `mmap`, maybe? `copyin`? Is that even a thing?
+
+`mmap` has a shared flag, which we can use to share some memory. But I dunno how we're supposed to get this to work. I'm sure this is great for forked processes, but what about ones that are separate from each other? Could we use a pipe, perhaps? But even pipes require forked processes... What kinda lousy IPC is this...
+
+The answer was `process_vm_writev`, very useful function. But now, I've a dilemma of sorts... I have multiple different paths to go. I can either begin work on parsing ELF headers, so that I no longer have to hardcode function addresses, or I can get to work on generating the probe machine code. Now, I could either write my own C compiler(a subset of C, of course), or I can just rely on gcc.
+
+The machine code generation seems a bit daunting, and I've had my fill of looking at it, so I'll just focus on ELF parsing instead.
+
+The plan I have is as follows:
+1. Open and read the Elf file...
+
+A most wondrous idea has hit me. I was worried about having to fill out the `Elf64_Ehdr` struct and others manually, but I've been thinking about things the wrong way! I was under the false assumption I always had to call `read` with an array, but that's not truly the case. I could just pass `&ehdr` into read, and everything gets filled automatically! Wonderful!
+
+I've been thinking... we should probably mmap the file instead of repeated `read` calls.
+
+Wondrous idea, wondrous idea. I've been bothering with directly declaring structs and assigning by value, but my problem is that I don't like moving bytes around very much. If I only need to look at a section headers sh_type field, why should I read the entire thing? I'd thought that even if I `mmap`'d the file, I'd still have to bother with moving bytes, like a `copyin` operation.
+
+But that's all unnecessary, because we have pointers! Declaring a pointer doesn't even do anything like move bytes, it just gives us a convenient way of grabbing memory on the go, and works really well with `mmap`.
+
+But `mmap` requires a size_t arg, and I don't know how to get that... I wonder if I can just pass a macro, or NULL to grab the whole file... Do ELF headers have a max size? I wonder.
+
+We can just use `stat`! Very convenient.
