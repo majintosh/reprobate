@@ -6,13 +6,13 @@
 #include <sys/stat.h>
 
 // Very fancy, idiomatic C right here. Just don't pass NULL and you'll be fine
-static inline int str_comp(char* str1, char* str2) {
+static inline int str_comp(const char* str1, const char* str2) {
 	int i = -1;
 	while (str1[++i] == str2[i] && str1[i]);
 	return !(str1[i] || str2[i]);
 }
 
-long get_func_addr(char* elf_path, char* func_name)
+long get_func_addr(const char* elf_path, const char* func_name)
 {
 	int fd = open(elf_path, O_RDONLY);
 	if (fd < 0)
@@ -21,7 +21,7 @@ long get_func_addr(char* elf_path, char* func_name)
 	stat(elf_path, &elf_stats);
 	// Bit crude in it's current state. We're mapping the entire
 	// file rather than just the header parts we're interested in.
-	char* base = (char*) mmap(NULL, elf_stats.st_size, PROT_READ, MAP_PRIVATE, fd, 0);
+	const char* base = (char*) mmap(NULL, elf_stats.st_size, PROT_READ, MAP_PRIVATE, fd, 0);
 	close(fd);
 	if (base == MAP_FAILED)
 		return -1;
