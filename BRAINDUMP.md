@@ -86,3 +86,23 @@ But `mmap` requires a size_t arg, and I don't know how to get that... I wonder i
 We can just use `stat`! Very convenient.
 
 `sh_link` is a thing, a very useful thing that directs us to the correct string table, because there exist multiple string tables, which was the cause of some errors I had to endure. You've also gotta look out for index values and mixing them up with offsets, very troublesome things.
+
+Now that we're able to retrieve the ELF string table info and ASLR base, we need to work on actually generating a patch. We'll just rely on gcc for this. But how?
+
+I tried compiling with `gcc -S` and then running the output .s file through `as`, yet the issue is that `as` generates an ELF file, when all we want is just a file with straight binary. The *other* issue is that gcc generates assembly code with metadata, like .info and .ident, but I suspect we can let `as` ignore those.
+
+Now, we *could* keep things as is, and have another ELF parser that locates the text segment, but that's too much work. I just want `as` to look at some assembly, and output a file with the corresponding machine code, nothing more, nothing less. There must be some flag that lets us do this.
+
+We had to jump through some hoops... `as` can't output a raw binary blob, so we need to run its output through another tool, `objcopy` which just translates object files into different formats. In our case, we want raw binary, so we want to pass the `-O binary` flag.
+
+Oh, but there's another flag—there always is. We also need to take *just* the .text section, so we also need to pass `-j .text` which stands for "just .text, please."
+
+And now, after you run your .out file through the `objcopy -O binary -j .text a.out a.bin` machine, you get a perfectly ordinary binary blob. I verified with `stat` to check the size, as well as `hexdump`, and all looked good to me.
+
+But throw all that out the window, because it's too elaborate. Instead, we can use `nasm` and the `-f bin` flag that does all that for us. Why doesn't `as` have the same option? Strange.
+
+...no, no... it still doesn't work... Of course not... We can't just pass the output of `gcc -S` into `nasm`, because `gcc` likes inserting metadata that `nasm` can't ignore.
+
+the problem we're facing here is that we're too attached to the trivialities. Who cares *how* we generate the final binary blob? All `reprobate` cares about is getting a file that contains a binary blob. So, for now, we're going to set up a placeholder "patch generator" function that writes to a new file, and the only thing it'll write is 0xc3, the `ret` instruction. The main function we'll be working on for now is one that reads that file, and runs everything through `process_vm_writev`.
+
+It seems like the syscall requires iovecs. I'd previously encountered the things in FreeBSD, where they were necessary... No, I'm thinking about `uio`, not `iovec`.
