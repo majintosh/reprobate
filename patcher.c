@@ -13,8 +13,9 @@ int write_patch(const char* path)
 		return -1;
 	char buf[1] = {0xc3};
 
-	// I plead idiomatic C
-	return ((write(fd, buf, sizeof(buf)) == -1 | close(fd) == -1) * -1);
+	int writes = write(fd, buf, sizeof(buf));
+	int closed = close(fd);
+	return (writes == -1 || closed == -1);
 }
 
 char* get_patch(const char* path)
@@ -31,8 +32,9 @@ char* get_patch(const char* path)
 		return NULL;
 	}
 
-	// Very very idiomatic C
-	if (read(fd, buf, patch_stat.st_size) == -1 | close(fd) == -1) {
+	int reads = read(fd, buf, patch_stat.st_size);
+	int closed = close(fd);
+	if (reads == -1 || closed == -1) {
 		free(buf);
 		return NULL;
 	}
