@@ -106,3 +106,29 @@ But throw all that out the window, because it's too elaborate. Instead, we can u
 the problem we're facing here is that we're too attached to the trivialities. Who cares *how* we generate the final binary blob? All `reprobate` cares about is getting a file that contains a binary blob. So, for now, we're going to set up a placeholder "patch generator" function that writes to a new file, and the only thing it'll write is 0xc3, the `ret` instruction. The main function we'll be working on for now is one that reads that file, and runs everything through `process_vm_writev`.
 
 It seems like the syscall requires iovecs. I'd previously encountered the things in FreeBSD, where they were necessary... No, I'm thinking about `uio`, not `iovec`.
+
+Have you heard of the term "Idiomatic C"? It's a very nice term you can throw around whenever you're up to no good. "Hey, what're you doing there?!" "Huh. me?" "Yeah, you, what's that in your hand?" "This? This is just idiomatic C."
+
+The most idiomatic C is the C that uses an abundance of logical operators. Really. Look at any idiomatic C and you'll just find logical operators at the root of it—the C book's filled with them. Then again, there's also stuff that doesn't use logical operators that much, like duff's device, though I don't know if that counts as idiomatic C. I don't think there's actually a meaning to the term "idiomatic C," it's just a catch-all term for tomfoolery. Maybe that was enough text to hide the fact that I forgot bitwise ANDs and ORs don't have a set evaluation order, which means my idiomatic C was buggy C this whole time.
+
+I was concerned that compiler optimizations could inline functions, and thereby ruin my prober, since it needs the functions addresses and for them to be actual functions for ret to work. A real concern, but just a quick look at the ELF file with objdump can make clear whether or not a function was inlined.
+
+I've got the basic prototype set up, but it doesn't seem to be working... You see, what I'm doing is running a test program that calls a function `bad` in `main`. All `bad` does is print something out. I'm trying to patch this function's prologue with `ret` so it doesn't print anything. The issue is that it's not working.
+
+My guess right now is that either the compiler optimized out the function call and inlined it, or something with prefetching. Hmm, prefetching... I wonder how we can tell the CPU that the prefetched instructions need to be fetched again; maybe that's the point of `int3`?
+
+Well, I can already see a different issue. The `buf` array we use to read our patch file isn't reading properly. Instead of just having the value 0xc3, it's got a completely different value. There's also the fact that the size of the buf is 8 instead of 1, for whatever reason... No, nevermind, that's just the size of the pointer itself, not the elements in it.
+
+The *actual* issue is `process_vm_writev`'s failure. It's returning -1. Checking `errno`, we're getting an EFAULT error, which means something's wrong with how we're generating the address of the function we're trying to probe. Something about being unable to access the address... I ran through the address calculation again, though, and everything looked fine. Curiouser and curiouser
+
+What's even more curious is that it may actually be *our* address, not the remote address. `local_iov` could also be the source of the error.
+
+Turns out that it may be a permission issue. Looking into it, `EFAULT` can also be returned if we're trying to write to a page that doesn't have write permissions. Though that seems more like an `EPERM` error. Not very good, Linux. One point docked.
+
+So, we need to now figure out a way to change the page permissions of a remote process. The `mprotect` man page offers no guidance on such a matter, only telling us how to change the calling process's protections.
+
+Maybe this calls for some additional patching? `mprotect` is ultimately a syscall, which means it exists as a single assembly instruction. All we have to do is patch just one instruction (probably a few instructions, since we need to pass arguments as well) into the process we're patching that marks the text segment as writeable. Afterwards, we need to point the process's RIP to our new patch, which I don't know how to do. Maybe we could use `PTRACE_SETREGSET`? Hmm... I feel like I'm overcomplicating things, and a much simpler, more convenient solution exist somewhere. Doing all the things I just said is a lot of work...
+
+I have cogitated and cogitated, and cogitated some more, and come to a conclusion. You see, the whole reason I opted to use `process_vm_writev` instead of `PTRACE_POKETEXT` is because `process_vm_writev` is a lot faster when it comes to writing multiple bytes from a big file. `PTRACE_POKETEXT`, on the other hand, requires a whole syscall trap for every single byte. With `process_vm_writev`, we need to write elaborate logic to change memory protections by manually hacking RIP and dealing with register saving conventoions. With `PTRACE_POKETEXT`, we *could* just use it repeatedly for every single byte of our patch, but that'd be slow. So, what do we do? We take the best of both worlds.
+
+We can use `PTRACE_POKETEXT` to write a `jmp` instruction in the text segment, which jumps to another region of memory that's executable *and* writeable. That region is where we use `process_vm_writev` and where our patch goes. Brilliant.
