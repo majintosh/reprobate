@@ -56,20 +56,32 @@ int str_to_int(char* str)
  */
 int main(int argc, char* argv[])
 {
+	if (argc != 5) {
+		printf("Provide the PID, path to the proc/maps file, ELF file, and the name of the function being patched\n");
+		return -1;
+	}
 
 	pid_t tracee_pid = str_to_int(argv[1]);
 
-	ptrace(PTRACE_ATTACH, tracee_pid, 0x0, 0x0);
+	if (ptrace(PTRACE_ATTACH, tracee_pid, 0x0, 0x0) == -1) {
+		printf("ptrace failed to attach\n");
+		return -1;
+	}
 	
 	long aslr_base = get_aslr_base(argv[2]);
 	long function_address = aslr_base + get_func_addr(argv[3], argv[4]);
 
 	write_patch(PATCH_FILE);
 	char* buf = get_patch(PATCH_FILE);
-	if (buf == NULL)
+	if (buf == NULL) {
+		printf("Failed to read patch file\n");
 		return -1;
+	}
 	// The 1 here is just a placeholder, we need to actually figure out how many bytes we're moving later (maybe just use write_patch's return value)
-	patch_process(tracee_pid, buf, 1, (void*) function_address);
+	if (patch_process(tracee_pid, buf, 1, (void*) function_address) == -1) {
+		printf("Failed to patch the process\n");
+		return -1;
+	}
 
 	return 0;
 }
