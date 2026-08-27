@@ -132,3 +132,93 @@ Maybe this calls for some additional patching? `mprotect` is ultimately a syscal
 I have cogitated and cogitated, and cogitated some more, and come to a conclusion. You see, the whole reason I opted to use `process_vm_writev` instead of `PTRACE_POKETEXT` is because `process_vm_writev` is a lot faster when it comes to writing multiple bytes from a big file. `PTRACE_POKETEXT`, on the other hand, requires a whole syscall trap for every single byte. With `process_vm_writev`, we need to write elaborate logic to change memory protections by manually hacking RIP and dealing with register saving conventoions. With `PTRACE_POKETEXT`, we *could* just use it repeatedly for every single byte of our patch, but that'd be slow. So, what do we do? We take the best of both worlds.
 
 We can use `PTRACE_POKETEXT` to write a `jmp` instruction in the text segment, which jumps to another region of memory that's executable *and* writeable. That region is where we use `process_vm_writev` and where our patch goes. Brilliant.
+
+Reeeewiiiind. Rewind. Let's actually figure out why `process_vm_writev` sets errno to EFAULT from first principles. Specifically, let's figure things out through tracing. Come hither, `bpftrace`.
+
+We need to first figure out where errno is stored as a variable and have some sort of hardware breakpoint to watch when the value changes, like what x64dbg provides. We *only* watch this value once `process_vm_writev` is entered. My hope is that we can catch the exact value of RIP when that value is set. With that, we get the memory address, which we then run through `nm` and `addr2line` to figure out which line of code in which file we should look at. Let's look at the logic of this whole thing ourselves.
+
+So, my `bpftrace` script isn't working, and I think it's because `gdb`'s also attached to the process, so maybe it's got a hold on the debug registers and blocks `bpftrace`? I need `gdb` because that's how I even get the address of `main` in the first place.  I can't really just attach `gdb` for a bit then detach, because once I detach, the program's just going to run to completion. Maybe I should add a `sleep` call?
+
+Why am I trying to use `bpftrace` you may ask? I don't know, to be honest. We can just use `gdb`; it's got functions like watch, rwatch, and awatch, which set up hardware breakpoints.
+
+Turns out we didn't even need `nm` and `addr2line`, because `gdb` tells us which file the current line of code's at. In our case, it's "../sysdeps/unix/sysv/linux/process_vm_writev.c:30" 
+
+This file tells me nothing, really. I see a function `process_vm_writev` which just returns this macro:
+
+```c
+return INLINE_SYSCALL_CALL (process_vm_writev, pid, local_iov,
+			      liovcnt, remote_iov, riovcnt, flags);
+```
+
+Do you know what this macro expands to? This.
+
+```c
+({
+  long int sc_ret = ({ unsigned long int resultvar; __typeof__ (((__typeof__ ((flags) - (flags))) (flags))) __arg6 = ((__typeof__ ((flags) - (flags))) (flags)); __typeof__ (((__typeof__ ((riovcnt) - (riovcnt))) (riovcnt))) __arg5 = ((__typeof__ ((riovcnt) - (riovcnt))) (riovcnt)); __typeof__ (((__typeof__ ((remote_iov) - (remote_iov))) (remote_iov))) __arg4 = ((__typeof__ ((remote_iov) - (remote_iov))) (remote_iov)); __typeof__ (((__typeof__ ((liovcnt) - (liovcnt))) (liovcnt))) __arg3 = ((__typeof__ ((liovcnt) - (liovcnt))) (liovcnt)); __typeof__ (((__typeof__ ((local_iov) - (local_iov))) (local_iov))) __arg2 = ((__typeof__ ((local_iov) - (local_iov))) (local_iov)); __typeof__ (((__typeof__ ((pid) - (pid))) (pid))) __arg1 = ((__typeof__ ((pid) - (pid))) (pid)); register __typeof__ (((__typeof__ ((flags) - (flags))) (flags))) _a6 asm (""r9"") = __arg6; register __typeof__ (((__typeof__ ((riovcnt) - (riovcnt))) (riovcnt))) _a5 asm (""r8"") = __arg5; register __typeof__ (((__typeof__ ((remote_iov) - (remote_iov))) (remote_iov))) _a4 asm (""r10"") = __arg4; register __typeof__ (((__typeof__ ((liovcnt) - (liovcnt))) (liovcnt))) _a3 asm (""rdx"") = __arg3; register __typeof__ (((__typeof__ ((local_iov) - (local_iov))) (local_iov))) _a2 asm (""rsi"") = __arg2; register __typeof__ (((__typeof__ ((pid) - (pid))) (pid))) _a1 asm (""rdi"") = __arg1; asm volatile ( ""syscall\n\t"" : ""=a"" (resultvar) : ""0"" (311), ""r"" (_a1), ""r"" (_a2), ""r"" (_a3), ""r"" (_a4), ""r"" (_a5), ""r"" (_a6) : ""memory"", ""cc"", ""r11"", ""cx""); (long int) resultvar; });
+  __builtin_expect ((((unsigned long int) (sc_ret) > -4096UL)), 0) ? ({ (__libc_errno = ((-(sc_ret)))); -1L; }) : sc_ret;
+}
+)
+```
+
+It's scary. I've sprinked in some newlines to make it a bit more readable.
+
+```c
+({
+  long int sc_ret = ({ unsigned long int resultvar;
+  __typeof__ (((__typeof__ ((flags) - (flags))) (flags))) __arg6 = ((__typeof__ ((flags) - (flags))) (flags));
+  __typeof__ (((__typeof__ ((riovcnt) - (riovcnt))) (riovcnt))) __arg5 = ((__typeof__ ((riovcnt) - (riovcnt))) (riovcnt));
+  __typeof__ (((__typeof__ ((remote_iov) - (remote_iov))) (remote_iov))) __arg4 = ((__typeof__ ((remote_iov) - (remote_iov))) (remote_iov));
+  __typeof__ (((__typeof__ ((liovcnt) - (liovcnt))) (liovcnt))) __arg3 = ((__typeof__ ((liovcnt) - (liovcnt))) (liovcnt));
+  __typeof__ (((__typeof__ ((local_iov) - (local_iov))) (local_iov))) __arg2 = ((__typeof__ ((local_iov) - (local_iov))) (local_iov));
+  __typeof__ (((__typeof__ ((pid) - (pid))) (pid))) __arg1 = ((__typeof__ ((pid) - (pid))) (pid));
+  register __typeof__ (((__typeof__ ((flags) - (flags))) (flags))) _a6 asm (""r9"") = __arg6;
+  register __typeof__ (((__typeof__ ((riovcnt) - (riovcnt))) (riovcnt))) _a5 asm (""r8"") = __arg5;
+  register __typeof__ (((__typeof__ ((remote_iov) - (remote_iov))) (remote_iov))) _a4 asm (""r10"") = __arg4;
+  register __typeof__ (((__typeof__ ((liovcnt) - (liovcnt))) (liovcnt))) _a3 asm (""rdx"") = __arg3;
+  register __typeof__ (((__typeof__ ((local_iov) - (local_iov))) (local_iov))) _a2 asm (""rsi"") = __arg2;
+  register __typeof__ (((__typeof__ ((pid) - (pid))) (pid))) _a1 asm (""rdi"") = __arg1;
+  asm volatile ( ""syscall\n\t"" : ""=a"" (resultvar) : ""0"" (311), ""r"" (_a1), ""r"" (_a2), ""r"" (_a3), ""r"" (_a4), ""r"" (_a5), ""r"" (_a6) : ""memory"", ""cc"", ""r11"", ""cx"");
+  (long int) resultvar;
+  });
+
+  __builtin_expect ((((unsigned long int) (sc_ret) > -4096UL)), 0) ? ({ (__libc_errno = ((-(sc_ret))));
+  -1L;
+  }) : sc_ret;
+
+}
+)
+```
+
+From what little I could get. a lot of this is just assigning the value of sc_ret in a fancy manner. We first define resultvar as an unsigned long int, then use it to store the return value of the syscall. Afterwards, that final line, `(long int) resultvar;` seems out of place, but it's just what we return to the assignment operator of `sc_ret`.
+
+In that assigment of sc_ret, we call the syscall, which you can spot in the final `asm volatile` line.
+
+What I find to be the most interesting is the regular use of `register`. That's got a reputation for being *the* vestigial organ of C, since compilers mostly ignore it. I guess not in this case. Very interesting stuff here, though. I notice the snippets like `asm (""r9"")` are probably used to reference a register. Here I thought asm was just keyword like `static` or `volatile`, but it seems to be something we can use wherever.
+
+Anyway, all this hasn't led us anywhere. I was expecting a very nice looking bit of code that says "we're returning `EFAULT` over here!" Instead, we got what you just saw. Let's go back to the project and lay this particular tangent to rest for now. As they say, let sleeping hogs sleep, or something.
+
+So, `jmp`. We need to patch a basic `jmp` instruction into the process with `PTRACE_POKETEXT` and jump to a region we've patched out. But how exactly do we select a region of memory for this? We can't just use any old address, since it could be used by the process at the moment, or acquired later on by some memory allocator. What we need is a way to remotely call `mmap` on a separate process, but that's not possible. We'd probably need to patch in an `mmap` call first, but the whole issue is that we can't just patch things in all willy-nilly without acquiring memory that's safe to use. What do you think? I'm sure you have some idea, don't you? Think very hard, and pass that message to me through time.
+
+I think one approach that might work is for us to actually use our tracer's process address space as temporary storage. What I mean by this is that we can use something like `process_vm_readv` to read the data in a certain memory range. Afterwards, we can use `process_vm_writev` to overwrite the data there—no, no, nevermind, that's too destructive...
+
+How's this for an idea: we first use `PTRACE_PEEKTEXT` to look at some memory in the other process and store it in our own process, then `PTRACE_POKETEXT` to patch in an `mmap` call. Once the call is done, we can use `PTRACE_POKETEXT` again to restore the data that we'd overwritten.
+
+I need to figure out a plan of action. This is it. We first call `process_vm_readv` on some writeable and executable region of memory, save it, and overwrite it with `process_vm_writev` where we patch in an `mmap` call. We set RIP to the new address, wait for the call to finish, then recover the memory we just overwrote. Once that's done, we write our patch to that new region of memory we just mapped, then finally use `PTRACE_POKETEXT` to write the `jmp` in the text segment.
+
+I think the region we'll use is the stack. Specifically, the very bottom of the stack. If my computer science fundamentals are correct, this should be fine, as the stack grows downwards. Ergo, we'll likely be using memory that isn't currently in use. And if it is in use? Well, we were probably going to overflow the stack anyway.
+
+I've been trying to figure out a way to get the process's stack address, and realized that it'll be an arduous process. I could read the `/proc/pid/maps` file again, but that approach seems byzantine, since we'd have to go back into string matching and keeping track of previouly read values and... Let's just use a tried and true placeholder function.
+
+Now I'm facing a different problem, how do I retrieve the value of the `mmap` call? An elaborate IPC setup probably isn't the way to go... or is it?
+
+We might be able to map a shared file into the tracee's process space, a file our tracer already has mapped into its own address space. Alternatively, we could just check the `/proc/pid/maps` file for new entries.
+
+I have figured it out! Well, I figured out a previous problem, not the current one. Snooping around the `proc` filesystem and its manpages, I came across `/proc/pid/stat`, which, according to its manpage, contains a value `startstack` which returns the beginning (i.e., bottom) of the stack, which is what we were looking for! I hope I got that right... We might actually be looking for the value that's on the other end, the "top". We'll figure it out as we go. There's also `arg_start`, which says it refers to the "program environment." I don't know what that is. `env`, maybe? I dunno, but it could be the way we figure out the ASLR base, too.
+
+The `proc` filesystem has lots of tools we can work with. `/proc/pid/mem` lets us treat the entire process's memory space as a file with things like `open()` and `read()`, though no `write()`...
+
+`/proc/pid/attr` is just a bunch of security stuff... I must admit, keeping all your security attributes in one place seems smelly.
+
+Looking at `get_patch`, I realize it's probably better if we pass a pre-allocated buffer rather than `malloc`'ing one in the function itself. Ownership gets fuzzy when we do stuff like that.
+
+All this diving into different filesystems makes me wonder how exactly they implement their own read/open/write calls. Is that how it works? I don't know.
