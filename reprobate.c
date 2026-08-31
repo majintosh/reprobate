@@ -48,6 +48,16 @@ int str_to_int(char* str)
 	return sum;
 }
 
+static inline int
+check_free(const pid_t pid, const int bytes, const void *addr)
+{
+	for (int i = 0; i<bytes; i++) {
+		if (ptrace(PTRACE_PEEKTEXT, pid, addr, NULL) != NULL)
+			return 0;
+	}
+	return 1;
+}
+
 /*
  * argv[1] is the pid
  * argv[2] is the path to the tracee's /proc/pid/maps file (We can probably just derive this from argv[1] later)
@@ -63,6 +73,7 @@ int main(int argc, char* argv[])
 
 	pid_t tracee_pid = str_to_int(argv[1]);
 
+	/* Attaching ptrace sends SIGSTOP */
 	if (ptrace(PTRACE_ATTACH, tracee_pid, 0x0, 0x0) == -1) {
 		printf("ptrace failed to attach\n");
 		return -1;
