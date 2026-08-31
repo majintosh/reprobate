@@ -1,5 +1,18 @@
+#include <stdio.h>
+#include <unistd.h>
+
+int flag = 0;
+
+int bad()
+{
+	printf("REPROBATE FAILED\n");
+	flag = 1;
+	return 1;
+}
+
 int main()
 {
-	while (1);
-	return 32;
+	sleep(400);
+	bad();
+	return 0;
 }
