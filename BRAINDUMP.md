@@ -222,3 +222,11 @@ The `proc` filesystem has lots of tools we can work with. `/proc/pid/mem` lets u
 Looking at `get_patch`, I realize it's probably better if we pass a pre-allocated buffer rather than `malloc`'ing one in the function itself. Ownership gets fuzzy when we do stuff like that.
 
 All this diving into different filesystems makes me wonder how exactly they implement their own read/open/write calls. Is that how it works? I don't know.
+
+We have a problem of sorts. The stack doesn't have executable permissions.
+
+Back to square one with us! Wondeful.
+
+We should use ptrace.
+
+This thing has been the death of me. I just don't know where to put in my `mmap` call. Confound it. I'm just going to set up a real basic function. We'll use `PTRACE_PEEKTEXT` to scan for a region of memory that's free. It's not very good, performance-wise, but we'll deal with it later.

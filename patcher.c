@@ -42,13 +42,6 @@ char* get_patch(const char* path)
 	return buf;
 }
 
-long
-get_stack_end(const pid_t pid)
-{
-	/* placeholder */
-	return 0x1;
-}
-
 ssize_t patch_process(const pid_t pid, void* buf, const size_t len, void* target_address)
 {
 	struct iovec local, remote;
@@ -57,14 +50,4 @@ ssize_t patch_process(const pid_t pid, void* buf, const size_t len, void* target
 	remote.iov_base = target_address;
 	remote.iov_len = len;
 	return process_vm_writev(pid, &local, 1, &remote, 1, 0);
-}
-
-int
-patch_stack_end(const pid_t pid, const char* patch, const size_t len)
-{
-	long addr;
-
-	addr = get_stack_end(pid) - len;
-
-	return (patch_process(pid, patch, len, addr));
 }
