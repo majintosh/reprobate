@@ -62,19 +62,20 @@ check_free(const pid_t pid, const int bytes, const long addr)
 	return 1;
 }
 
-// We're going to assume our first patch that initially calls mmap is 4 bytes.
-#define MMAP_CALL_SIZE 4
+#define MMAP_CALL_SIZE 2
 
 /* Pass addr and payload as char pointers */
 #define PTRACE_WRITE(pid, addr, payload, length) \
 	for (int i = 0; i<length; i++) { \
-		ptrace(PTRACE_POKETEXT, pid, addr+i, payload+i); \
+		ptrace(PTRACE_POKETEXT, pid, addr+i, payload[i]); \
 	}
 
 #define PTRACE_READ(pid, addr, buffer, length) \
 	for (int i = 0; i<length; i++) { \
-		*(buffer+i)=ptrace(PTRACE_PEEKTEXT, pid, addr+i, buffer+i); \
+		buffer[i]=ptrace(PTRACE_PEEKTEXT, pid, addr+i, buffer+i); \
 	}
+
+#define PATCH_SIZE 32
 /*
  * argv[1] is the pid
  * argv[2] is the path to the tracee's /proc/pid/maps file (We can probably just derive this from argv[1] later)
