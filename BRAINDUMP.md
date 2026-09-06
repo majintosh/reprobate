@@ -230,3 +230,9 @@ Back to square one with us! Wondeful.
 We should use ptrace.
 
 This thing has been the death of me. I just don't know where to put in my `mmap` call. Confound it. I'm just going to set up a real basic function. We'll use `PTRACE_PEEKTEXT` to scan for a region of memory that's free. It's not very good, performance-wise, but we'll deal with it later.
+
+That wasn't it either. I've landed at a new solution: we'll just write our `mmap` call into whatever `rip` is currently pointing at. Once we're done, we can recover the previous state.
+
+There's currently an issue with how we flip-flop between char* and long to represent addresses. I can't use void* (though I would've liked to) since it doesn't support pointer arithmetic without extensions, so we're forced to choose between either char* or long. I'll just use char* from now on, since I don't know how... nevermind, I forgot we can't perform bit-shifts on pointers. Maybe we should just typedef a long.
+
+I've found the most interesting thing: rip is pointing to a shared library text segment. I didn't consider this, to be honest, but I guess it makes sense.
