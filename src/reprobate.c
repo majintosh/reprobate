@@ -5,6 +5,7 @@
 #include <sys/wait.h>
 #include <sys/uio.h>
 #include <sys/user.h>
+#include <sys/mman.h>
 #include <stdio.h>
 #include <unistd.h>
 #include <fcntl.h>
@@ -84,8 +85,8 @@ check_free(const pid_t pid, const int bytes, const long addr)
  */
 int main(int argc, char* argv[])
 {
-	struct user_regs_struct regs;
-	char buf[MMAP_CALL_SIZE];
+	char read_buf[MMAP_CALL_SIZE], write_buf[MMAP_CALL_SIZE];
+	struct user_regs_struct regs_copy, regs_write;
 	pid_t tracee_pid;
 	struct iovec io;
 
@@ -106,12 +107,50 @@ int main(int argc, char* argv[])
 
 	waitpid(tracee_pid, NULL, WUNTRACED);
 
-	io.iov_base = &regs;
-	io.iov_len = sizeof(regs);
+	io.iov_base = &regs_copy;
+	io.iov_len = sizeof(regs_copy);
 
 	ptrace(PTRACE_GETREGSET, tracee_pid, NT_PRSTATUS, &io);
+	PTRACE_READ(tracee_pid, regs_copy.rip, read_buf, sizeof(read_buf));
 
-	PTRACE_READ(tracee_pid, regs.rip, buf, sizeof(buf));
+	regs_write = regs_copy;
+	regs_write.rax = 9;
+	regs_write.rdi = 0;
+	regs_write.rsi = PATCH_SIZE;
+	regs_write.rdx = PROT_EXEC | PROT_READ;
+	regs_write.r10 = MAP_PRIVATE | MAP_ANONYMOUS;
+	regs_write.r8 = -1;
+	regs_write.r9 = 0;
+
+	io.iov_base = &regs_write;
+	io.iov_len = sizeof(regs_write);
+
+	/* 0x0F and 0x05 make up the syscall opcode */
+	write_buf[0] = 0x0F;
+	write_buf[1] = 0x05;
+
+
+	/* Writing the syscall in and running it */
+	PTRACE_WRITE(tracee_pid, regs_write.rip, write_buf, sizeof(write_buf));
+	ptrace(PTRACE_SETREGSET, tracee_pid, NT_PRSTATUS, &io);
+	ptrace(PTRACE_SYSCALL, tracee_pid, 0, 0);
+
+	/* Waiting for tracee to stop at syscall entry */
+	waitpid(tracee_pid, NULL, WUNTRACED);
+
+	/* Stop tracee at syscall exit */
+	ptrace(PTRACE_SYSCALL, tracee_pid, 0, 0);
+	waitpid(tracee_pid, NULL, WUNTRACED);
+
+	/* Getting the return value of mmap */
+	ptrace(PTRACE_GETREGSET, tracee_pid, NT_PRSTATUS, &io);
+
+	/* Restoring the initial process state */
+	io.iov_base = &regs_copy;
+	io.iov_len = sizeof(regs_copy);
+
+	PTRACE_WRITE(tracee_pid, regs_copy.rip, read_buf, sizeof(read_buf));
+	ptrace(PTRACE_SETREGSET, tracee_pid, NT_PRSTATUS, &io);
 
 	return 0;
 }
