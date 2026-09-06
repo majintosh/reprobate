@@ -236,3 +236,37 @@ That wasn't it either. I've landed at a new solution: we'll just write our `mmap
 There's currently an issue with how we flip-flop between char* and long to represent addresses. I can't use void* (though I would've liked to) since it doesn't support pointer arithmetic without extensions, so we're forced to choose between either char* or long. I'll just use char* from now on, since I don't know how... nevermind, I forgot we can't perform bit-shifts on pointers. Maybe we should just typedef a long.
 
 I've found the most interesting thing: rip is pointing to a shared library text segment. I didn't consider this, to be honest, but I guess it makes sense.
+
+I figured out how to read the right place, and verified that rip does indeed point to a proper memory address; now, I need to figure out how to write an mmap call.
+
+`mmap` is a syscall, so we *should* be able to just patch in a `syscall` instruction.
+
+I have discovered the scripting of gdb. I was wondering if the libraries I was using were using the legacy `int` instruction, or the newer `syscall` instruction. I wasn't sure, so I looked into gdb's scripting, and came up with this bad boy:
+
+```
+while ( ( (char*)$rip )[0] != 0x0F || ( (char*)$rip )[1] != 0x05)
+    stepi
+    end
+end
+```
+
+Don't mind all the parenthesis, that's just me being unsure of precedence, as always. I wonder if we can pass arguments to a script, instead of having to manually write the bytes we're looking for.
+
+Anyway, the intention here is to find the `syscall` instruction. Endianness always gets me, since I'm not sure how things are ordered. The intel manual says syscall's opcode is `0F 05`, but how's that actually stored? I've since elucidated that endianness doesn't apply to opcodes; those are always stored in "order."
+
+Blegh, explaining this is confusing. It's easier to think of it in memory order. `0x0F` will always be stored at the lower memory address, and `0x05` at the higher one. That's how it works for all opcodes. Thank you, rubber duck.
+
+Also, gdb scripts *do* take args. You just use `$arg0`, `$arg1`, etc. So, we now have this new and improved script:
+
+```
+while ( ((char*)$rip)[0]!=$arg0 || ((char*)$rip)[1]!=$arg1 )
+    stepi
+    end
+end
+```
+
+From what I've found, the number of the syscall is 9.
+
+I spent so long trying to figure out why `mmap` was returning a negative number to rax. Turns out, I forgot to add the `MAP_PRIVATE` flag. Should read the manpage more carefully next time.
+
+Anyway, we finally managed to do it! We freeze the process, write an mmap call in, get the value of rax, which gives us the memory address of the new map, then restore the initial state. Immediately, I can see that this is going to have issues in multi-threaded contexts, since another thread, blitzing through the text segment, as it should, might have a head-on collision with our `mmap` call. For now though, we'll just use this.
