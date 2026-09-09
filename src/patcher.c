@@ -11,11 +11,11 @@ int write_patch(const char* path)
 	int fd = open(path, O_WRONLY);
 	if (fd == -1)
 		return -1;
-	char buf[1] = {0xc3};
+	char buf[5] = {0xc3, 0xff, 0x12, 0xca, 0xde};
 
 	int writes = write(fd, buf, sizeof(buf));
 	int closed = close(fd);
-	return (writes == -1 || closed == -1);
+	return writes;
 }
 
 char* get_patch(const char* path)
