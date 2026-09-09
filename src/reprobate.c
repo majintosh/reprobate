@@ -117,7 +117,7 @@ int main(int argc, char* argv[])
 	regs_write.rax = 9;
 	regs_write.rdi = 0;
 	regs_write.rsi = PATCH_SIZE;
-	regs_write.rdx = PROT_EXEC | PROT_READ;
+	regs_write.rdx = PROT_EXEC | PROT_READ | PROT_WRITE;
 	regs_write.r10 = MAP_PRIVATE | MAP_ANONYMOUS;
 	regs_write.r8 = -1;
 	regs_write.r9 = 0;
@@ -152,5 +152,20 @@ int main(int argc, char* argv[])
 	PTRACE_WRITE(tracee_pid, regs_copy.rip, read_buf, sizeof(read_buf));
 	ptrace(PTRACE_SETREGSET, tracee_pid, NT_PRSTATUS, &io);
 
+	int size = write_patch(PATCH_FILE);
+	char* patch = get_patch(PATCH_FILE);
+
+	patch_process(tracee_pid, patch, size, (void*) regs_write.rax);
+
 	return 0;
 }
+
+/*
+ * Patch in mmap call [X]
+ * Call mmap [X]
+ * Write patch into newly mapped region (process_vm_writev) [X]
+ * Write trampoline to jump to new patch []
+ * Write jmp call into patched function prologue to jump to trampoline (POKETEXT) [] (will a near jmp work?)
+ * Write jmp call in patch to jump back to original function []
+ * Restore initial state [X]
+ */

@@ -270,3 +270,11 @@ From what I've found, the number of the syscall is 9.
 I spent so long trying to figure out why `mmap` was returning a negative number to rax. Turns out, I forgot to add the `MAP_PRIVATE` flag. Should read the manpage more carefully next time.
 
 Anyway, we finally managed to do it! We freeze the process, write an mmap call in, get the value of rax, which gives us the memory address of the new map, then restore the initial state. Immediately, I can see that this is going to have issues in multi-threaded contexts, since another thread, blitzing through the text segment, as it should, might have a head-on collision with our `mmap` call. For now though, we'll just use this.
+
+I've been trying to use `process_vm_writev` to write into our newly allocated region, and it all seems to be going well, judging by its return value. Yet, when I check the memory of the tracee with `gdb`, I don't see my patch anywhere...
+
+Yes, the issue was that I had assumed my `write_patch` function was returning the size of the patch in bytes when it was actually returning a boolean value. Then there was also the issue of me passing the process's initial `rip` instead of `rax` (rax contains the mmap address). Silly mistakes, don't mind me.
+
+Anyway, it finally works. We are able to patch a running process. Hooray! Ten cheers, ten cheers.
+
+Now I'm thinking of whether or not we should be using a `jmp` or `call` instruction. Given that this whole thing's about performance, I'll just go with plain old `jmp`s for now.
