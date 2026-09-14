@@ -3,7 +3,6 @@
 #include <fcntl.h>
 #include <sys/stat.h>
 #include <sys/uio.h>
-#include <stdlib.h>
 
 
 int write_patch(const char* path)
@@ -18,24 +17,22 @@ int write_patch(const char* path)
 	return writes;
 }
 
-char* get_patch(const char* path)
+char* get_patch(const char* buf, const char* path)
 {
 	struct stat patch_stat;
+	int fd;
 	if (stat(path, &patch_stat) == -1)
 		return NULL;
-	char* buf = (char*) malloc(patch_stat.st_size);
 	if (buf == NULL)
 		return NULL;
-	int fd = open(path, O_RDONLY);
+	fd = open(path, O_RDONLY);
 	if (fd == -1) {
-		free(buf);
 		return NULL;
 	}
 
 	int reads = read(fd, buf, patch_stat.st_size);
 	int closed = close(fd);
 	if (reads == -1 || closed == -1) {
-		free(buf);
 		return NULL;
 	}
 

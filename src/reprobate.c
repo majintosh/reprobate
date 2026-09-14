@@ -7,6 +7,7 @@
 #include <sys/user.h>
 #include <sys/mman.h>
 #include <stdio.h>
+#include <stdlib.h>
 #include <unistd.h>
 #include <fcntl.h>
 #include <elf.h>
@@ -89,6 +90,8 @@ int main(int argc, char* argv[])
 	struct user_regs_struct regs_copy, regs_write;
 	pid_t tracee_pid;
 	struct iovec io;
+	char* patch_buf;
+	int size;
 
 
 	if (argc != 5) {
@@ -152,10 +155,14 @@ int main(int argc, char* argv[])
 	PTRACE_WRITE(tracee_pid, regs_copy.rip, read_buf, sizeof(read_buf));
 	ptrace(PTRACE_SETREGSET, tracee_pid, NT_PRSTATUS, &io);
 
-	int size = write_patch(PATCH_FILE);
-	char* patch = get_patch(PATCH_FILE);
+	size = write_patch(PATCH_FILE);
+	patch_buf = malloc(size);
+	if (get_patch(patch_buf, PATCH_FILE) == NULL) {
+		printf("Failed to get patch\n");
+		return -1;
+	}
 
-	patch_process(tracee_pid, patch, size, (void*) regs_write.rax);
+	patch_process(tracee_pid, patch_buf, size, (void*) regs_write.rax);
 
 	return 0;
 }

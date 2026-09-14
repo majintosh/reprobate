@@ -278,3 +278,7 @@ Yes, the issue was that I had assumed my `write_patch` function was returning th
 Anyway, it finally works. We are able to patch a running process. Hooray! Ten cheers, ten cheers.
 
 Now I'm thinking of whether or not we should be using a `jmp` or `call` instruction. Given that this whole thing's about performance, I'll just go with plain old `jmp`s for now.
+
+I'm getting tired of the elaborate testing process. I'm going to set up a test harness. Later.
+
+
