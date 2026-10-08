@@ -7,7 +7,7 @@
 
 int write_patch(const char* path)
 {
-	int fd = open(path, O_WRONLY);
+	int fd = open(path, O_WRONLY | O_CREAT); // Remove the creat flag later, bad practice
 	if (fd == -1)
 		return -1;
 	char buf[5] = {0xc3, 0xff, 0x12, 0xca, 0xde};
@@ -48,3 +48,23 @@ ssize_t patch_process(const pid_t pid, void* buf, const size_t len, void* target
 	remote.iov_len = len;
 	return process_vm_writev(pid, &local, 1, &remote, 1, 0);
 }
+
+/* target_addr takes an address to an address 
+ * We're using the FF jmp that takes a 64-bit offset
+ * */
+//char* jmp_generator(const char* buf)
+//{
+//	buf[0] = 0x50; // Pushes RAX to the stack
+//
+//	/* jmp encoding */
+//	buf[1] = 0xFF;
+//	buf[2] = 0xE0; // The ModRM byte. Points to rax reg	
+//	return buf;
+//}
+//
+///* This patches in a jump */
+//char* patch_jump()
+//{
+//	/* First thing to do is push the current RAX to the stack, then overwrite it with our trampoline mem address */
+//	/* The trampoline should include a pop instruction to restore the RAX reg before we return to the original function */
+//}

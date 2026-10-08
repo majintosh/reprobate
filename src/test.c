@@ -12,7 +12,7 @@ int bad()
 
 int main()
 {
-	sleep(400);
+	sleep(10);
 	bad();
 	return 0;
 }

@@ -80,9 +80,8 @@ check_free(const pid_t pid, const int bytes, const long addr)
 #define PATCH_SIZE 32
 /*
  * argv[1] is the pid
- * argv[2] is the path to the tracee's /proc/pid/maps file (We can probably just derive this from argv[1] later)
- * argv[3] is the path to the tracee's ELF file
- * argv[4] is the name of the function we're patching
+ * argv[2] is the path to the tracee's ELF file
+ * argv[3] is the name of the function we're patching
  */
 int main(int argc, char* argv[])
 {
@@ -91,15 +90,18 @@ int main(int argc, char* argv[])
 	pid_t tracee_pid;
 	struct iovec io;
 	char* patch_buf;
+	char maps[32];
 	int size;
 
 
-	if (argc != 5) {
+	if (argc != 4) {
 		printf("Provide the PID, path to the proc/maps file, ELF file, and the name of the function being patched\n");
 		return -1;
 	}
 
 	tracee_pid = str_to_int(argv[1]);
+
+	snprintf(maps, sizeof(maps), "/proc/%d/maps", tracee_pid);
 
 
 	/* Attaching ptrace sends SIGSTOP; this doesn't necessarily freeze the tracee immediately */
@@ -163,6 +165,19 @@ int main(int argc, char* argv[])
 	}
 
 	patch_process(tracee_pid, patch_buf, size, (void*) regs_write.rax);
+
+	/* patching the target function's prologue */
+	/*
+	 * 0x50 Pushes RAX
+	 * 0x48 0xB8 begins our overwrite, where we move a value into the value in rax
+	 * regs_write.rax is the value we want to move into rax (this is definitely wonky)
+	 * 0xFF 0xE0 is the jmp binary
+	 */
+	char pokes[10] = {0x50, 0x48, 0xB8, regs_write.rax, 0xFF, 0xE0};
+	long base = get_aslr_base(maps);
+	long func = get_func_addr(argv[2], argv[3]);
+	long func_addr = get_aslr_base(maps) + get_func_addr(argv[2], argv[3]);
+	ptrace(PTRACE_POKETEXT, tracee_pid, func_addr, &poke);
 
 	return 0;
 }
