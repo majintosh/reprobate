@@ -177,7 +177,7 @@ int main(int argc, char* argv[])
 	long base = get_aslr_base(maps);
 	long func = get_func_addr(argv[2], argv[3]);
 	long func_addr = get_aslr_base(maps) + get_func_addr(argv[2], argv[3]);
-	ptrace(PTRACE_POKETEXT, tracee_pid, func_addr, &poke);
+	ptrace(PTRACE_POKETEXT, tracee_pid, func_addr, &pokes);
 
 	return 0;
 }
