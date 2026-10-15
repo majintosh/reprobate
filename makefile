@@ -1,5 +1,5 @@
 CC = gcc
-CFLAGS = -Iinclude
+CFLAGS = -Iinclude -g
 
 NAME = reprobate
 
@@ -11,7 +11,7 @@ $(NAME): $(SRC) $(HDR)
 
 test:
 	make
-	$(CC) -o test test.c; gdb $(NAME)
+	$(CC) -o testo test.c; ./testo & sudo gdb -ex "break main" -ex "layout src" --args ./$(NAME) $$! ~/testo bad
 
 clean:
 	rm -rf $(NAME)
