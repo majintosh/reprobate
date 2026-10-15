@@ -281,4 +281,6 @@ Now I'm thinking of whether or not we should be using a `jmp` or `call` instruct
 
 I'm getting tired of the elaborate testing process. I'm going to set up a test harness. Later.
 
+I forgot where we left off... I think we were trying to figure out how to jump to our new patch, and discovered it's impossible, because it's too far away... or is it? I think the solution we discovered was using far jmps. Specifically, loading a 64-bit value into a register and using it as an offset. Then we just clobber everything in our target function prologue, and take the removed bits and put them into our trampoline's epilogue? Yeah, that sounds right. I think we should add a `POP` instruction into the clobbered function that we jump to from our trampoline, that way, we restore `rax`.
 
+So, current objective is to figure out how to write our values in. My current implementation just throws regs_write.rax into a char array initializer, which isn't right, though I wonder what it does? Implicit cast?
