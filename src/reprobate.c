@@ -1,3 +1,4 @@
+#define _GNU_SOURCE
 #include "patcher.h"
 #include "elf_parser.h"
 #include <sys/ptrace.h>
@@ -77,7 +78,7 @@ check_free(const pid_t pid, const int bytes, const long addr)
 		buffer[i]=ptrace(PTRACE_PEEKTEXT, pid, addr+i, buffer+i); \
 	}
 
-#define PATCH_SIZE 32
+#define PATCH_SIZE 1024
 /*
  * argv[1] is the pid
  * argv[2] is the path to the tracee's ELF file
@@ -85,11 +86,10 @@ check_free(const pid_t pid, const int bytes, const long addr)
  */
 int main(int argc, char* argv[])
 {
-	char read_buf[MMAP_CALL_SIZE], write_buf[MMAP_CALL_SIZE];
 	struct user_regs_struct regs_copy, regs_write;
+	char *read_buf, *write_buf, *patch_buf;
 	pid_t tracee_pid;
 	struct iovec io;
-	char* patch_buf;
 	char maps[32];
 	int size;
 
@@ -116,6 +116,7 @@ int main(int argc, char* argv[])
 	io.iov_len = sizeof(regs_copy);
 
 	ptrace(PTRACE_GETREGSET, tracee_pid, NT_PRSTATUS, &io);
+	read_buf = malloc(MMAP_CALL_SIZE);
 	PTRACE_READ(tracee_pid, regs_copy.rip, read_buf, sizeof(read_buf));
 
 	regs_write = regs_copy;
@@ -131,6 +132,7 @@ int main(int argc, char* argv[])
 	io.iov_len = sizeof(regs_write);
 
 	/* 0x0F and 0x05 make up the syscall opcode */
+	write_buf = malloc(MMAP_CALL_SIZE);
 	write_buf[0] = 0x0F;
 	write_buf[1] = 0x05;
 
@@ -173,16 +175,25 @@ int main(int argc, char* argv[])
 	 * regs_write.rax is the value we want to move into rax
 	 * 0xFF 0xE0 is the jmp binary
 	 */
+
 	char pokes[13] = {0x50, 0x48, 0xB8};
 	for (int i = 0; i<8; i++) {
-		pokes[2+i] = ((char*) &regs_write.rax)[i];
+		pokes[2+i] = ((char*) &regs_write.rax)[i]; // regs_write.rax represents the address where our patch starts. We need this address in order to jmp properly, which is why we patch it into the patchee so that it can load that value into the rax reg and use a far jmp
 	}
 	pokes[11] = 0xFF;
 	pokes[12] = 0xE0;
+
+	free(read_buf);
+	read_buf = malloc(sizeof(pokes));
+
 	long base = get_aslr_base(maps); // There's a better way to get the aslr base, don't forget.
 	long func = get_func_addr(argv[2], argv[3]);
 	long func_addr = get_aslr_base(maps) + get_func_addr(argv[2], argv[3]);
-	ptrace(PTRACE_POKETEXT, tracee_pid, func_addr, &pokes);
+
+	PTRACE_READ(tracee_pid, func_addr, read_buf, sizeof(pokes));
+	PTRACE_WRITE(tracee_pid, func_addr, pokes, sizeof(pokes));
+
+	patch_process(tracee_pid, read_buf, sizeof(pokes), (void*) regs_write.rax + size);
 
 	return 0;
 }
