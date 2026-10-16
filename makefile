@@ -23,6 +23,12 @@ test_patchee: $(NAME) testo
 	sudo gdb -p $$TESTOPID -ex "layout asm" -ex "disassemble main"; \
 	kill $$(pidof testo)
 
+test: $(NAME) testo
+	./testo & TESTOPID=$$!; \
+	sudo gdb -ex "break main" -ex "layout src" --args ./$(NAME) $$! ./testo bad; \
+	sudo gdb -p $$TESTOPID -ex "layout asm" -ex "disassemble main"; \
+	kill $$(pidof testo)
+
 clean:
 	rm -rf $(NAME) testo
 
