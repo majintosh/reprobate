@@ -9,15 +9,21 @@ HDR = $(wildcard include/*.h)
 $(NAME): $(SRC) $(HDR)
 	$(CC) $(CFLAGS) $(SRC) -o $@
 
-test_patcher:
-	make
-	$(CC) -g -o testo test.c; ./testo & sudo gdb -ex "break main" -ex "layout src" --args ./$(NAME) $$! ./testo bad
+testo: test.c
+	$(CC) -g -o $@ $<
 
-test_patchee:
-	make
-	$(CC) -g -o testo test.c; ./testo & TESTOPID=$$! && export TESTOPID && echo $$TESTOPID && sudo ./$(NAME) $$TESTOPID ./testo bad && sudo gdb -p $$TESTOPID -ex "layout src"
+test_patcher: $(NAME) testo
+	./testo & sudo gdb -ex "break main" -ex "layout src" --args ./$(NAME) $$! ./testo bad; \
+	kill $$(pidof testo)
+
+test_patchee: $(NAME) testo
+	./testo & TESTOPID=$$!; \
+	echo $$TESTOPID; \
+	sudo ./$(NAME) $$TESTOPID ./testo bad && \
+	sudo gdb -p $$TESTOPID -ex "layout asm" -ex "disassemble main"; \
+	kill $$(pidof testo)
 
 clean:
-	rm -rf $(NAME)
+	rm -rf $(NAME) testo
 
 .PHONY: test clean
