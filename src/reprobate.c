@@ -117,7 +117,7 @@ int main(int argc, char* argv[])
 
 	ptrace(PTRACE_GETREGSET, tracee_pid, NT_PRSTATUS, &io);
 	read_buf = malloc(MMAP_CALL_SIZE);
-	PTRACE_READ(tracee_pid, regs_copy.rip, read_buf, sizeof(read_buf));
+	PTRACE_READ(tracee_pid, regs_copy.rip, read_buf, MMAP_CALL_SIZE);
 
 	regs_write = regs_copy;
 	regs_write.rax = 9;
@@ -138,7 +138,7 @@ int main(int argc, char* argv[])
 
 
 	/* Writing the syscall in and running it */
-	PTRACE_WRITE(tracee_pid, regs_write.rip, write_buf, sizeof(write_buf));
+	PTRACE_WRITE(tracee_pid, regs_write.rip, write_buf, MMAP_CALL_SIZE);
 	ptrace(PTRACE_SETREGSET, tracee_pid, NT_PRSTATUS, &io);
 	ptrace(PTRACE_SYSCALL, tracee_pid, 0, 0);
 
@@ -156,7 +156,7 @@ int main(int argc, char* argv[])
 	io.iov_base = &regs_copy;
 	io.iov_len = sizeof(regs_copy);
 
-	PTRACE_WRITE(tracee_pid, regs_copy.rip, read_buf, sizeof(read_buf));
+	PTRACE_WRITE(tracee_pid, regs_copy.rip, read_buf, MMAP_CALL_SIZE);
 	ptrace(PTRACE_SETREGSET, tracee_pid, NT_PRSTATUS, &io);
 
 	size = write_patch(PATCH_FILE);
@@ -180,6 +180,7 @@ int main(int argc, char* argv[])
 	for (int i = 0; i<8; i++) {
 		pokes[2+i] = ((char*) &regs_write.rax)[i]; // regs_write.rax represents the address where our patch starts. We need this address in order to jmp properly, which is why we patch it into the patchee so that it can load that value into the rax reg and use a far jmp
 	}
+	// Going about this wrong. It should be that regs_write.rax's value comes AFTER the jmp. What we do instead is have a `mov` instruction that takes a memory offset, the memory offset is the memory where we wrote regs_write.rax. Wunderbar.
 	pokes[11] = 0xFF;
 	pokes[12] = 0xE0;
 
