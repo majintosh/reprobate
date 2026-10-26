@@ -193,6 +193,7 @@ int main(int argc, char* argv[])
 
 	PTRACE_READ(tracee_pid, func_addr, read_buf, sizeof(pokes));
 	PTRACE_WRITE(tracee_pid, func_addr, pokes, sizeof(pokes));
+	PTRACE_WRITE(tracee_pid, regs_write.rax+1, read_buf, sizeof(pokes));
 
 	patch_process(tracee_pid, read_buf, sizeof(pokes), (void*) regs_write.rax + size);
 
@@ -208,3 +209,5 @@ int main(int argc, char* argv[])
  * Write jmp call in patch to jump back to original function []
  * Restore initial state [X]
  */
+
+// We need to return from our trampoline, we can do this by hardocding a jmp to the function, since we already have the func address. We also pop rax via... One moment, why doesn't ret work? I see, it's because we were calling ret before pushing the stack info.

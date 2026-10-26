@@ -284,3 +284,7 @@ I'm getting tired of the elaborate testing process. I'm going to set up a test h
 I forgot where we left off... I think we were trying to figure out how to jump to our new patch, and discovered it's impossible, because it's too far away... or is it? I think the solution we discovered was using far jmps. Specifically, loading a 64-bit value into a register and using it as an offset. Then we just clobber everything in our target function prologue, and take the removed bits and put them into our trampoline's epilogue? Yeah, that sounds right. I think we should add a `POP` instruction into the clobbered function that we jump to from our trampoline, that way, we restore `rax`.
 
 So, current objective is to figure out how to write our values in. My current implementation just throws regs_write.rax into a char array initializer, which isn't right, though I wonder what it does? Implicit cast?
+
+We got the jump working properly, now we need to actually build out our trampoline itself. I'm thinking we couuuld.... Hmm...  basic `pop rax` then a direct `jmp`, methinks.
+
+We've hit a wall, we can't, or aren't, clobbering properly, because we don't keep track of instruction boundaries. Now we need to figure out a way to do that... From what I found, apparently debug info can tell us when the function prologue ends, maybe we just clobber the entire function prologue instead of scanning through things ourselves.
