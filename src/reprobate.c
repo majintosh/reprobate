@@ -178,7 +178,7 @@ int main(int argc, char* argv[])
 
 	char pokes[13] = {0x50, 0x48, 0xB8};
 	for (int i = 0; i<8; i++) {
-		pokes[2+i] = ((char*) &regs_write.rax)[i]; // regs_write.rax represents the address where our patch starts. We need this address in order to jmp properly, which is why we patch it into the patchee so that it can load that value into the rax reg and use a far jmp
+		pokes[3+i] = ((char*) &regs_write.rax)[i]; // regs_write.rax represents the address where our patch starts. We need this address in order to jmp properly, which is why we patch it into the patchee so that it can load that value into the rax reg and use a far jmp
 	}
 	// Going about this wrong. It should be that regs_write.rax's value comes AFTER the jmp. What we do instead is have a `mov` instruction that takes a memory offset, the memory offset is the memory where we wrote regs_write.rax. Wunderbar.
 	pokes[11] = 0xFF;
