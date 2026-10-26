@@ -3,7 +3,7 @@
 
 int flag = 0;
 
-int bad()
+int bado()
 {
 	printf("REPROBATE FAILED\n");
 	flag = 1;
@@ -12,7 +12,7 @@ int bad()
 
 int main()
 {
-	sleep(10);
-	bad();
+	sleep(100);
+	bado();
 	return 0;
 }
