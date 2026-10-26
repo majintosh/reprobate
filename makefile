@@ -32,4 +32,4 @@ test: $(NAME) testo
 clean:
 	rm -rf $(NAME) testo
 
-.PHONY: test clean
+.PHONY: test test_patcher test_patchee clean
