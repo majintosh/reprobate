@@ -150,9 +150,13 @@ int main(int argc, char* argv[])
 	read_buf = malloc(MMAP_CALL_SIZE > (MIN_SIZE+15) ? MMAP_CALL_SIZE : (MIN_SIZE+15));
 	PTRACE_READ(tracee_pid, regs_copy.rip, read_buf, MMAP_CALL_SIZE);
 
+	long base = get_aslr_base(maps); // There's a better way to get the aslr base, don't forget.
+	long func = get_func_addr(argv[2], argv[3]);
+	long func_addr = get_aslr_base(maps) + get_func_addr(argv[2], argv[3]);
+	
 	regs_write = regs_copy;
 	regs_write.rax = 9;
-	regs_write.rdi = 0;
+	regs_write.rdi = base-0x10000;
 	regs_write.rsi = MMAP_SIZE;
 	regs_write.rdx = PROT_EXEC | PROT_READ | PROT_WRITE;
 	regs_write.r10 = MAP_PRIVATE | MAP_ANONYMOUS;
@@ -207,9 +211,6 @@ int main(int argc, char* argv[])
 	 * 0xFF 0xE0 is the jmp binary
 	 */
 
-	long base = get_aslr_base(maps); // There's a better way to get the aslr base, don't forget.
-	long func = get_func_addr(argv[2], argv[3]);
-	long func_addr = get_aslr_base(maps) + get_func_addr(argv[2], argv[3]);
 
 	PTRACE_READ(tracee_pid, func_addr, read_buf, MIN_SIZE+15);
 	int clobbering = retrieve_clobbering((uint8_t *) read_buf, func_addr, MIN_SIZE, MIN_SIZE+15);
