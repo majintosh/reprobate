@@ -73,9 +73,19 @@ check_free(const pid_t pid, const int bytes, const long addr)
 
 /* Pass addr and payload as char pointers */
 #define PTRACE_WRITE(pid, addr, payload, length) \
-	for (int i = 0; i<length; i++) { \
-		ptrace(PTRACE_POKETEXT, pid, addr+i, payload[i]); \
-	}
+	do { \
+		int _i = 0; \
+		for (; _i + (int)sizeof(long) <= (length); _i += sizeof(long)) { \
+			long word; \
+			memcpy(&word, (payload)+_i, sizeof(long)); \
+			ptrace(PTRACE_POKETEXT, (pid), (void*)((addr)+_i), (void*)word); \
+		} \
+		if (_i < (length)) { \
+			long word = ptrace(PTRACE_PEEKTEXT, (pid), (void*)((addr)+_i), NULL); \
+			memcpy(&word, (payload)+_i, (length)-_i); \
+			ptrace(PTRACE_POKETEXT, (pid), (void*)((addr)+_i), (void*)word); \
+		} \
+	} while (0)
 
 #define PTRACE_READ(pid, addr, buffer, length) \
 	for (int i = 0; i<length; i++) { \
