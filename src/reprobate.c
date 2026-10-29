@@ -12,6 +12,8 @@
 #include <unistd.h>
 #include <fcntl.h>
 #include <elf.h>
+#include <string.h>
+#include <capstone/capstone.h>
 
 #define PATCH_FILE "/tmp/reprobate.bin"
 
@@ -82,6 +84,22 @@ check_free(const pid_t pid, const int bytes, const long addr)
 
 #define MMAP_SIZE 1024 // Size of the region we're going to allocate
 
+int retrieve_clobbering(const uint8_t *memory, uint64_t addr, int scan_size, size_t buf_size)
+{
+	cs_insn* insn;
+	csh handle;
+	size_t count;
+
+	if (cs_open(CS_ARCH_X86, CS_MODE_64, &handle) != CS_ERR_OK)
+		return -1;
+	insn = cs_malloc(handle);
+	int total_bytes = 0;
+	while (total_bytes <= scan_size && cs_disasm_iter(handle, &memory, &buf_size, &addr, insn))
+		total_bytes+=insn->size;
+
+	return total_bytes;
+
+}
 /*
  * argv[1] is the pid
  * argv[2] is the path to the tracee's ELF file
