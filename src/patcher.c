@@ -17,6 +17,14 @@ int write_patch(const char* path)
 	return writes;
 }
 
+int get_patch_size(const char* path)
+{
+	struct stat patch_stat;
+	if (stat(path, &patch_stat) == -1)
+		return -1;
+	return patch_stat.st_size;
+}
+
 char* get_patch(const char* buf, const char* path)
 {
 	struct stat patch_stat;

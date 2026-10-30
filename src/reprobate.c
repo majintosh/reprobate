@@ -276,7 +276,7 @@ int main(int argc, char* argv[])
 	PTRACE_WRITE(tracee_pid, regs_copy.rip, read_buf, MMAP_CALL_SIZE);
 	ptrace(PTRACE_SETREGSET, tracee_pid, NT_PRSTATUS, &io);
 
-	patch_size = write_patch(PATCH_FILE);
+	patch_size = get_patch_size(PATCH_FILE);
 	patch_buf = malloc(patch_size);
 	if (get_patch(patch_buf, PATCH_FILE) == NULL) {
 		printf("Failed to get patch\n");
