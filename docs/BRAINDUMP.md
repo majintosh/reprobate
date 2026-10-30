@@ -1,3 +1,5 @@
+## This is just my braindump document, where I dump my brain onto the file and say things I thing. It's not very formal, in the formal sense of the word. For the formal stuff, look at the README
+
 reprobate is an instrumentation probing thingy.
 
 Ahem. Reprobate is a dynamic tracer that makes exclusive use of direct `jmp`s rather than `int3` breakpoints.
