@@ -69,7 +69,7 @@ check_free(const pid_t pid, const int bytes, const long addr)
 
 #define MMAP_CALL_SIZE 2 // Size of the mmap call to be injected into patchee (just the size of a syscall instruction)
 
-#define MIN_SIZE 14 // Size of the jmp/shim to be injected into the patchee
+#define MIN_SIZE 5 // Size of the jmp/shim to be injected into the patchee
 
 /* Pass addr and payload as char pointers */
 #define PTRACE_WRITE(pid, addr, payload, length) \
@@ -260,38 +260,15 @@ int main(int argc, char* argv[])
 	uint64_t mmap_base = regs_write.rax;
 
 	patch_process(tracee_pid, patch_buf, patch_size, (void*) mmap_base);
-
-	/* patching the target function's prologue
-	 *
-	 * 0x50 Pushes RAX, to restore later.
-	 * 0x48 0xB8 begins our overwrite, where we move a value into the value in rax
-	 * regs_write.rax is the value we want to move into rax
-	 * 0xFF 0xE0 is the jmp binary
-	 */
-
-
+	
 	PTRACE_READ(tracee_pid, func_addr, read_buf, MIN_SIZE+15);
 	clobbered translation = retrieve_translation((uint8_t *) read_buf, func_addr, MIN_SIZE, MIN_SIZE+15, mmap_base+patch_size);
 
-	char *jmp = malloc(translation.size);
-	jmp[0] = 0x50;
-	jmp[1] = 0x48;
-	jmp[2] = 0xB8;
-	for (int i = 0; i<8; i++)
-		jmp[3+i] = ((char*) &mmap_base)[i]; // regs_write.rax represents the address where our patch starts. We need this address in order to jmp properly, which is why we patch it into the patchee so that it can load that value into the rax reg and use a far jmp
-	jmp[11] = 0xFF;
-	jmp[12] = 0xE0;
-	jmp[13] = 0x58;
-	for (int i = 14; i<translation.size; i++)
-		jmp[i] = 0x90;
+	clobber_function(translation.size, mmap_base, func_addr, tracee_pid);
 
-	// Clobber in our jmp to trampoline
-	PTRACE_WRITE(tracee_pid, func_addr, jmp, translation.size);
-
-	trampoline_epilogue(tracee_pid, &translation, (void*) func_addr + translation.size, (void*) mmap_base + patch_size);
+	trampoline_epilogue(tracee_pid, &translation, func_addr + translation.size, mmap_base + patch_size);
 	return 0;
 }
-
 /*
  * Patch in mmap call [X]
  * Call mmap [X]
