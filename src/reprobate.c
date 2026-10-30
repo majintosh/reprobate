@@ -152,8 +152,9 @@ clobbered retrieve_translation(const uint8_t *memory, uint64_t addr, int scan_si
 	return output;
 }
 
-int trampoline_epilogue(uid_t tracee_pid, char* home_addr, void* target_address)
+int trampoline_epilogue(uid_t tracee_pid, clobbered* payload, char* home_addr, void* target_address)
 {
+	patch_process(tracee_pid, payload->bytes, payload->size, target_address);
 	char temp[16];
 	temp[0] = 0x48;
 	temp[1] = 0xB8;
@@ -163,7 +164,7 @@ int trampoline_epilogue(uid_t tracee_pid, char* home_addr, void* target_address)
 	temp[11] = 0xE0;
 
 	// Write our trampoline 'epilogue'
-	return patch_process(tracee_pid, temp, 16, target_address);
+	return patch_process(tracee_pid, temp, 16, target_address+payload->size);
 }
 
 /*
@@ -256,8 +257,9 @@ int main(int argc, char* argv[])
 		printf("Failed to get patch\n");
 		return -1;
 	}
+	uint64_t mmap_base = regs_write.rax;
 
-	patch_process(tracee_pid, patch_buf, patch_size, (void*) regs_write.rax);
+	patch_process(tracee_pid, patch_buf, patch_size, (void*) mmap_base);
 
 	/* patching the target function's prologue
 	 *
@@ -269,35 +271,24 @@ int main(int argc, char* argv[])
 
 
 	PTRACE_READ(tracee_pid, func_addr, read_buf, MIN_SIZE+15);
-	int clobbering = retrieve_clobbering((uint8_t *) read_buf, func_addr, MIN_SIZE, MIN_SIZE+15);
+	clobbered translation = retrieve_translation((uint8_t *) read_buf, func_addr, MIN_SIZE, MIN_SIZE+15, mmap_base+patch_size);
 
-	char *pokes = malloc(clobbering);
-	pokes[0] = 0x50;
-	pokes[1] = 0x48;
-	pokes[2] = 0xB8;
+	char *jmp = malloc(translation.size);
+	jmp[0] = 0x50;
+	jmp[1] = 0x48;
+	jmp[2] = 0xB8;
 	for (int i = 0; i<8; i++)
-		pokes[3+i] = ((char*) &regs_write.rax)[i]; // regs_write.rax represents the address where our patch starts. We need this address in order to jmp properly, which is why we patch it into the patchee so that it can load that value into the rax reg and use a far jmp
-							   //
-	pokes[11] = 0xFF;
-	pokes[12] = 0xE0;
-	pokes[13] = 0x58;
-	for (int i = 14; i<clobbering; i++)
-		pokes[i] = 0x90;
+		jmp[3+i] = ((char*) &mmap_base)[i]; // regs_write.rax represents the address where our patch starts. We need this address in order to jmp properly, which is why we patch it into the patchee so that it can load that value into the rax reg and use a far jmp
+	jmp[11] = 0xFF;
+	jmp[12] = 0xE0;
+	jmp[13] = 0x58;
+	for (int i = 14; i<translation.size; i++)
+		jmp[i] = 0x90;
 
-	PTRACE_WRITE(tracee_pid, func_addr, pokes, clobbering);
+	// Clobber in our jmp to trampoline
+	PTRACE_WRITE(tracee_pid, func_addr, jmp, translation.size);
 
-	patch_process(tracee_pid, read_buf, clobbering, (void*) regs_write.rax + patch_size);
-
-	patch_process(tracee_pid, read_buf, clobbering, (void*) regs_write.rax + patch_size);
-	char *temp = malloc(16);
-	temp[0] = 0x48;
-	temp[1] = 0xB8;
-	for (int i = 0; i<8; i++) 
-		temp[3+i] = ((char*) &func_addr)[i]; // regs_write.rax represents the address where our patch starts. We need this address in order to jmp properly, which is why we patch it into the patchee so that it can load that value into the rax reg and use a far jmp
-	temp[10] = 0xFF;
-	temp[11] = 0xE0;
-	patch_process(tracee_pid, temp, 16, (void*) regs_write.rax + patch_size + clobbering);
-
+	trampoline_epilogue(tracee_pid, &translation, (void*) func_addr + translation.size, (void*) mmap_base + patch_size);
 	return 0;
 }
 
