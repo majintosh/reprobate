@@ -1,5 +1,5 @@
 CC = gcc
-CFLAGS = -Iinclude -g
+CFLAGS = -Iinclude -g -lcapstone
 
 NAME = reprobate
 FUNCTION = bado
@@ -11,7 +11,7 @@ $(NAME): $(SRC) $(HDR)
 	$(CC) $(CFLAGS) $(SRC) -o $@
 
 testo: test.c
-	$(CC) -g -o $@ $<
+	$(CC) -O0 -g -o $@ $<
 
 test_patcher: $(NAME) testo
 	./testo & TESTOPID=$$!; \
