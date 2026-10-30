@@ -151,6 +151,21 @@ clobbered retrieve_translation(const uint8_t *memory, uint64_t addr, int scan_si
 
 	return output;
 }
+
+int trampoline_epilogue(uid_t tracee_pid, char* home_addr, void* target_address)
+{
+	char temp[16];
+	temp[0] = 0x48;
+	temp[1] = 0xB8;
+	for (int i = 0; i<8; i++)
+		temp[3+i] = ((char*) &home_addr)[i]; // regs_write.rax represents the address where our patch starts. We need this address in order to jmp properly, which is why we patch it into the patchee so that it can load that value into the rax reg and use a far jmp
+	temp[10] = 0xFF;
+	temp[11] = 0xE0;
+
+	// Write our trampoline 'epilogue'
+	return patch_process(tracee_pid, temp, 16, target_address);
+}
+
 /*
  * argv[1] is the pid
  * argv[2] is the path to the tracee's ELF file
