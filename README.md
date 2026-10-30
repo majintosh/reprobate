@@ -7,10 +7,10 @@ A dynamic instrumentation tool that patches functions using direct `jmp` instruc
 **Done:**
 - ELF symbol-table parsing (mmap-based section header and symtab/strtab traversal) to resolve function addresses without hardcoding
 - ASLR base-address calculation for a running process
+- Writing patches into a running process via `ptrace` / `process_vm_writev`
 
 **Not yet done:**
 - Generating patch payloads (compiling a target snippet via GCC and preparing it for injection)
-- Writing patches into a running process via `ptrace` / `process_vm_writev`
 - Benchmarking `jmp` vs `int3` overhead
 
 ## How it works (planned)
@@ -20,4 +20,4 @@ A dynamic instrumentation tool that patches functions using direct `jmp` instruc
 3. Attach to the target process with `ptrace` and write the patch via `process_vm_writev`
 4. Compare runtime overhead against an `int3`-based approach
 
-See [BRAINDUMP.md](./BRAINDUMP.md) for the dev log
+See [BRAINDUMP.md](docs/BRAINDUMP.md) for the dev log
