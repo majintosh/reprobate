@@ -152,19 +152,31 @@ clobbered retrieve_translation(const uint8_t *memory, uint64_t addr, int scan_si
 	return output;
 }
 
-int trampoline_epilogue(uid_t tracee_pid, clobbered* payload, char* home_addr, void* target_address)
+int clobber_function(int jmp_size, uint64_t trampoline_address, uint64_t function_address, uid_t tracee_pid)
 {
-	patch_process(tracee_pid, payload->bytes, payload->size, target_address);
-	char temp[16];
-	temp[0] = 0x48;
-	temp[1] = 0xB8;
-	for (int i = 0; i<8; i++)
-		temp[3+i] = ((char*) &home_addr)[i]; // regs_write.rax represents the address where our patch starts. We need this address in order to jmp properly, which is why we patch it into the patchee so that it can load that value into the rax reg and use a far jmp
-	temp[10] = 0xFF;
-	temp[11] = 0xE0;
 
-	// Write our trampoline 'epilogue'
-	return patch_process(tracee_pid, temp, 16, target_address+payload->size);
+	char *jmp = malloc(jmp_size);
+	jmp[0] = 0xE9;
+	int32_t addr = (int32_t)(trampoline_address - (function_address + 5));
+	memcpy(&jmp[1], &addr, sizeof(addr));
+
+
+	// Clobber in our jmp to trampoline
+	PTRACE_WRITE(tracee_pid, function_address, jmp, jmp_size);
+
+	return 0;
+}
+
+int trampoline_epilogue(uid_t tracee_pid, clobbered* payload, uint64_t home_addr, uint64_t target_address)
+{
+	patch_process(tracee_pid, payload->bytes, payload->size, (void*) target_address);
+
+	uint8_t jmp[5];
+	jmp[0] = 0xE9;
+	int32_t addr = (int32_t)(home_addr - (target_address + payload->size + 5));
+	memcpy(&jmp[1], &addr, sizeof(addr));
+
+	return patch_process(tracee_pid, jmp, sizeof(jmp), (void*) (target_address + payload->size));
 }
 
 /*
