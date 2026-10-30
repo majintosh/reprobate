@@ -122,32 +122,45 @@ clobbered retrieve_translation(const uint8_t *memory, uint64_t addr, int scan_si
 	cs_insn* insn;
 	csh handle;
 	size_t count;
-	char* new_hotness = malloc(64);
+	char* payload = malloc(64);
+	char* ptr = payload;
 
 	if (cs_open(CS_ARCH_X86, CS_MODE_64, &handle) != CS_ERR_OK)
 		return output;
 	cs_option(handle, CS_OPT_DETAIL, CS_OPT_ON);
 
 	insn = cs_malloc(handle);
-	while (output.size <= scan_size && cs_disasm_iter(handle, &memory, &buf_size, &addr, insn)) {
-		if (insn->id == X86_INS_CALL) {
-			int64_t absolute_address = insn->detail->x86.operands[0].imm;
-			int64_t relative_address = absolute_address - current_addr - 5; // We subtract 5 because by the time we jump, rip will be at the instruction after our call, which is 5 bytes.
-			*new_hotness++ = insn->bytes[0];
+	while (output.size < scan_size && cs_disasm_iter(handle, &memory, &buf_size, &addr, insn)) {
+		int opcode_length = insn->detail->x86.encoding.imm_offset
+                   ? insn->detail->x86.encoding.imm_offset
+                   : insn->detail->x86.encoding.disp_offset;
+		for (int i = 0; i<opcode_length; i++)
+			*ptr++ = insn->bytes[i];
+		if (insn->id == X86_INS_CALL || insn->id == X86_INS_LEA) {
+			int64_t absolute_address;
+			switch (insn->id) {
+				case X86_INS_CALL:
+					absolute_address = insn->detail->x86.operands[0].imm;
+					break;
+				case X86_INS_LEA:
+        				absolute_address = insn->address + insn->size + insn->detail->x86.operands[1].mem.disp;
+        				break;
+			}
+
+			int64_t relative_address = absolute_address - current_addr - insn->size; // We subtract 5 because by the time we jump, rip will be at the instruction after our call, which is 5 bytes.
 			for (int i = 0; i<4; i++)
-				*new_hotness++ = ((char*) &relative_address)[i];
+				*ptr++ = ((char*) &relative_address)[i];
 		}
 
 		else {
-			// Should be a way to first loop over opcode bytes
-			for (int i = 0; i<insn->size; i++) {
-				*new_hotness++ = insn->bytes[i];
+			for (int i = opcode_length; i<insn->size; i++) {
+				*ptr++ = insn->bytes[i];
 			}
 		}
 		current_addr+=insn->size;
 		output.size+=insn->size;
 	}
-	output.bytes = new_hotness;
+	output.bytes = payload;
 
 	return output;
 }

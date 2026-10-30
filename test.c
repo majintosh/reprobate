@@ -12,7 +12,8 @@ int bado()
 
 int main()
 {
-	sleep(100);
+	sleep(2);
 	bado();
+	printf("FINISHED\n");
 	return 0;
 }
